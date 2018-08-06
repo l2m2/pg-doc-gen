@@ -22,6 +22,8 @@ class PgDocGen():
       """
       cur.execute(sql)
       rs = cur.fetchall()
+      # todo 
+      # remove partial table
       return [r[0] for r in rs]
       
 if __name__ == '__main__':
