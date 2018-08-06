@@ -1,6 +1,7 @@
 import argparse
 import psycopg2
 import sys
+import os
 
 class PgDocGen():
   def __init__(self, cfg):
@@ -11,9 +12,10 @@ class PgDocGen():
       user=cfg['user'], 
       password=cfg['password']
     )
+    self.__md_file = '%s table structure.md'%cfg['name']
   def fini(self):
     self.__conn.close()
-  def get_all_tables(self):
+  def __get_all_tables(self):
     with self.__conn.cursor() as cur:
       sql = """
         SELECT table_name FROM information_schema.tables 
@@ -26,6 +28,35 @@ class PgDocGen():
       cur.execute(sql)
       rs = cur.fetchall()
       return [r[0] for r in rs]
+  def gen_md(self):
+    if os.path.exists(self.__md_file):
+      os.remove(self.__md_file)
+    tables = self.__get_all_tables()
+    sql = """
+      SELECT c.column_name, c.data_type, c.is_nullable, c.column_default, pgd.description
+      FROM pg_catalog.pg_statio_all_tables AS st
+        LEFT JOIN pg_catalog.pg_description pgd ON (pgd.objoid=st.relid)
+        RIGHT JOIN information_schema.columns c ON (pgd.objsubid=c.ordinal_position
+          AND c.table_schema=st.schemaname AND c.table_name=st.relname)
+      WHERE c.table_schema='{table_schema}' AND c.table_name='{table_name}'
+      ORDER BY c.ordinal_position
+    """
+    fd = open(self.__md_file, 'w+')
+    for t in tables:
+      with self.__conn.cursor() as cur:
+        cur.execute(sql.format(table_schema='public', table_name=t))
+        fd.writelines([
+          "### %s \n" % t,
+          "--- \n",
+          "| Field Name | Field Type | Not Null | Default | Description | \n",
+          "| ---------- | ---------- | -------- | ------- | ----------- | \n"
+        ])
+        rs = cur.fetchall()
+        for r in rs:
+          fd.writelines([
+            "| %s | %s | %s | %s | %s | \n" % r
+          ])
+    fd.close()
       
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(description='PostgreSQL Document Generator.')
@@ -38,9 +69,7 @@ if __name__ == '__main__':
   try:
     print(vars(args))
     gen = PgDocGen(vars(args))
-    print(gen.get_all_tables())
-    # todo
-    # export each table structure to markdown
+    gen.gen_md()
     gen.fini()
   except Exception as e:
     print(e)
