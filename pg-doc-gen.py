@@ -17,13 +17,14 @@ class PgDocGen():
     with self.__conn.cursor() as cur:
       sql = """
         SELECT table_name FROM information_schema.tables 
-        WHERE table_schema = 'public'
+        WHERE table_schema = 'public' AND table_name NOT IN (
+          SELECT c.relname AS child
+          FROM pg_inherits JOIN pg_class AS c ON (inhrelid=c.oid)
+        )
         ORDER BY table_name
       """
       cur.execute(sql)
       rs = cur.fetchall()
-      # todo 
-      # remove partial table
       return [r[0] for r in rs]
       
 if __name__ == '__main__':
